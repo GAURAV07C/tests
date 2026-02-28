@@ -18,7 +18,15 @@ app.get("/healthz", (_request, response) => {
 });
 
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  // More tolerant heartbeat for mobile background pauses.
+  pingInterval: 25_000,
+  pingTimeout: 120_000,
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
 
 registerSocketHandlers(io);
 

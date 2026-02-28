@@ -40,7 +40,10 @@ interface SocketLike {
   emit(event: string, ...args: unknown[]): this;
 }
 
-declare const io: (options?: SocketOptions) => SocketLike;
+declare const io: {
+  (options?: SocketOptions): SocketLike;
+  (uri: string, options?: SocketOptions): SocketLike;
+};
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -62,6 +65,7 @@ const STORAGE = {
   roomId: "remote_support_room_id",
   role: "remote_support_role",
   cameraApproved: "remote_support_camera_approved",
+  serverUrl: "remote_support_server_url",
 } as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -286,6 +290,36 @@ function clearInviteRoomIdFromUrl(): void {
   window.history.replaceState({}, "", nextLocation);
 }
 
+function isValidHttpUrl(value: string): boolean {
+  return /^https?:\/\/.+/i.test(value);
+}
+
+function isNativeRuntime(): boolean {
+  const runtimeWindow = window as Window & {
+    Capacitor?: { isNativePlatform?: () => boolean };
+  };
+  return Boolean(runtimeWindow.Capacitor?.isNativePlatform?.());
+}
+
+function resolveSocketServerUrl(): string | null {
+  const queryServerUrl = new URLSearchParams(window.location.search).get("server");
+  if (queryServerUrl && isValidHttpUrl(queryServerUrl)) {
+    localStorage.setItem(STORAGE.serverUrl, queryServerUrl);
+    return queryServerUrl;
+  }
+
+  const storedServerUrl = localStorage.getItem(STORAGE.serverUrl);
+  if (storedServerUrl && isValidHttpUrl(storedServerUrl)) {
+    return storedServerUrl;
+  }
+
+  if (isNativeRuntime()) {
+    return "https://tests-vw1q.onrender.com";
+  }
+
+  return null;
+}
+
 function persistSession(roomId: string, role: Role): void {
   localStorage.setItem(STORAGE.roomId, roomId);
   localStorage.setItem(STORAGE.role, role);
@@ -377,13 +411,15 @@ function refreshInstallAvailability(ui: AppUI): void {
 const ui = new AppUI();
 ui.closeCameraModal();
 
-const socket = io({
+const socketServerUrl = resolveSocketServerUrl();
+const socketOptions: SocketOptions = {
   autoConnect: true,
   reconnection: true,
   reconnectionAttempts: Infinity,
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
-});
+};
+const socket = socketServerUrl ? io(socketServerUrl, socketOptions) : io(socketOptions);
 
 const state: AppState = {
   userId: getOrCreateUserId(),

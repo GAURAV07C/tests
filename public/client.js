@@ -5,6 +5,7 @@ const STORAGE = {
     roomId: "remote_support_room_id",
     role: "remote_support_role",
     cameraApproved: "remote_support_camera_approved",
+    serverUrl: "remote_support_server_url",
 };
 function isRecord(value) {
     return typeof value === "object" && value !== null;
@@ -158,6 +159,28 @@ function clearInviteRoomIdFromUrl() {
     const nextLocation = `${url.pathname}${url.search}${url.hash}`;
     window.history.replaceState({}, "", nextLocation);
 }
+function isValidHttpUrl(value) {
+    return /^https?:\/\/.+/i.test(value);
+}
+function isNativeRuntime() {
+    const runtimeWindow = window;
+    return Boolean(runtimeWindow.Capacitor?.isNativePlatform?.());
+}
+function resolveSocketServerUrl() {
+    const queryServerUrl = new URLSearchParams(window.location.search).get("server");
+    if (queryServerUrl && isValidHttpUrl(queryServerUrl)) {
+        localStorage.setItem(STORAGE.serverUrl, queryServerUrl);
+        return queryServerUrl;
+    }
+    const storedServerUrl = localStorage.getItem(STORAGE.serverUrl);
+    if (storedServerUrl && isValidHttpUrl(storedServerUrl)) {
+        return storedServerUrl;
+    }
+    if (isNativeRuntime()) {
+        return "https://tests-vw1q.onrender.com";
+    }
+    return null;
+}
 function persistSession(roomId, role) {
     localStorage.setItem(STORAGE.roomId, roomId);
     localStorage.setItem(STORAGE.role, role);
@@ -226,13 +249,15 @@ function refreshInstallAvailability(ui) {
 }
 const ui = new AppUI();
 ui.closeCameraModal();
-const socket = io({
+const socketServerUrl = resolveSocketServerUrl();
+const socketOptions = {
     autoConnect: true,
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
-});
+};
+const socket = socketServerUrl ? io(socketServerUrl, socketOptions) : io(socketOptions);
 const state = {
     userId: getOrCreateUserId(),
     role: null,

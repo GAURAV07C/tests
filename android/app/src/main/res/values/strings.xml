@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Family Safety Remote</string>
+    <string name="title_activity_main">Family Safety Remote</string>
+    <string name="package_name">com.family.safety.remote</string>
+    <string name="custom_url_scheme">com.family.safety.remote</string>
+    <string name="keep_alive_channel_name">Safety Session</string>
+    <string name="keep_alive_channel_description">Keeps family safety connection active.</string>
+    <string name="keep_alive_title">Family Safety Active</string>
+    <string name="keep_alive_message">Connection stays ready in background.</string>
+</resources>

@@ -27,6 +27,7 @@ import {
 
 const ROOM_ID_PATTERN = /^\d{6}$/;
 const USER_ID_PATTERN = /^[a-z0-9-]{10,80}$/i;
+const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS ?? 30_000);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -649,23 +650,27 @@ export function registerSocketHandlers(io: Server): void {
     });
 
     socket.on("disconnect", () => {
-      const detached = removeSocket(socket.id);
-      if (!detached) {
-        return;
-      }
+      const disconnectedSocketId = socket.id;
 
-      const peerSocketId = detached.role === "host"
-        ? detached.room.clientSocketId
-        : detached.room.hostSocketId;
+      setTimeout(() => {
+        const detached = removeSocket(disconnectedSocketId);
+        if (!detached) {
+          return;
+        }
 
-      if (peerSocketId) {
-        io.to(peerSocketId).emit("peer:disconnected", {
-          roomId: detached.room.id,
-          role: detached.role,
-        });
-      }
+        const peerSocketId = detached.role === "host"
+          ? detached.room.clientSocketId
+          : detached.room.hostSocketId;
 
-      emitRoomUpdate(io, detached.room);
+        if (peerSocketId) {
+          io.to(peerSocketId).emit("peer:disconnected", {
+            roomId: detached.room.id,
+            role: detached.role,
+          });
+        }
+
+        emitRoomUpdate(io, detached.room);
+      }, DISCONNECT_GRACE_MS);
     });
   });
 }

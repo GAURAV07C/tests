@@ -1,6 +1,7 @@
 import { attachSocket, canUserActAsClient, canUserControlRoom, createRoom, findRoomByUserId, getRoom, removeSocket, } from "./memoryStore.js";
 const ROOM_ID_PATTERN = /^\d{6}$/;
 const USER_ID_PATTERN = /^[a-z0-9-]{10,80}$/i;
+const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS ?? 30_000);
 function isRecord(value) {
     return typeof value === "object" && value !== null;
 }
@@ -487,20 +488,23 @@ export function registerSocketHandlers(io) {
             }
         });
         socket.on("disconnect", () => {
-            const detached = removeSocket(socket.id);
-            if (!detached) {
-                return;
-            }
-            const peerSocketId = detached.role === "host"
-                ? detached.room.clientSocketId
-                : detached.room.hostSocketId;
-            if (peerSocketId) {
-                io.to(peerSocketId).emit("peer:disconnected", {
-                    roomId: detached.room.id,
-                    role: detached.role,
-                });
-            }
-            emitRoomUpdate(io, detached.room);
+            const disconnectedSocketId = socket.id;
+            setTimeout(() => {
+                const detached = removeSocket(disconnectedSocketId);
+                if (!detached) {
+                    return;
+                }
+                const peerSocketId = detached.role === "host"
+                    ? detached.room.clientSocketId
+                    : detached.room.hostSocketId;
+                if (peerSocketId) {
+                    io.to(peerSocketId).emit("peer:disconnected", {
+                        roomId: detached.room.id,
+                        role: detached.role,
+                    });
+                }
+                emitRoomUpdate(io, detached.room);
+            }, DISCONNECT_GRACE_MS);
         });
     });
 }
