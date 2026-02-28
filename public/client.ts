@@ -260,6 +260,32 @@ function loadStoredSession(): { roomId: string; role: Role } | null {
   return { roomId, role };
 }
 
+function readInviteRoomIdFromUrl(): string | null {
+  const roomId = new URLSearchParams(window.location.search).get("room");
+  if (!roomId || !/^\d{6}$/.test(roomId)) {
+    return null;
+  }
+
+  return roomId;
+}
+
+function buildInviteLink(roomId: string): string {
+  const url = new URL(window.location.href);
+  url.searchParams.set("room", roomId);
+  return url.toString();
+}
+
+function clearInviteRoomIdFromUrl(): void {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("room")) {
+    return;
+  }
+
+  url.searchParams.delete("room");
+  const nextLocation = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState({}, "", nextLocation);
+}
+
 function persistSession(roomId: string, role: Role): void {
   localStorage.setItem(STORAGE.roomId, roomId);
   localStorage.setItem(STORAGE.role, role);
@@ -369,6 +395,7 @@ const state: AppState = {
   cameraRequestPending: false,
 };
 
+let inviteRoomId = readInviteRoomIdFromUrl();
 let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
 
 const rtc = new WebRtcManager({
@@ -486,6 +513,7 @@ function refreshLocalMediaToggleState(): void {
 function refreshActionAvailability(): void {
   if (!socket.connected) {
     ui.setCreateRoomEnabled(false);
+    ui.setCopyInviteEnabled(false);
     ui.setJoinEnabled(false);
     ui.setStartShareEnabled(false);
     ui.setEnableCameraEnabled(false);
@@ -496,6 +524,7 @@ function refreshActionAvailability(): void {
 
   if (state.role === "host") {
     ui.setCreateRoomEnabled(false);
+    ui.setCopyInviteEnabled(Boolean(state.room));
     ui.setJoinEnabled(false);
     ui.setStartShareEnabled(false);
     const hasClient = Boolean(state.room?.clientSocketId);
@@ -507,6 +536,7 @@ function refreshActionAvailability(): void {
 
   if (state.role === "client") {
     ui.setCreateRoomEnabled(false);
+    ui.setCopyInviteEnabled(false);
     ui.setJoinEnabled(false);
     ui.setStartShareEnabled(true);
     ui.setEnableCameraEnabled(false);
@@ -516,6 +546,7 @@ function refreshActionAvailability(): void {
   }
 
   ui.setCreateRoomEnabled(true);
+  ui.setCopyInviteEnabled(false);
   ui.setJoinEnabled(true);
   ui.setStartShareEnabled(false);
   ui.setEnableCameraEnabled(false);
@@ -592,6 +623,45 @@ async function attemptStoredRejoin(): Promise<void> {
   });
 }
 
+async function attemptInviteJoin(): Promise<void> {
+  if (!inviteRoomId || state.role || state.room) {
+    return;
+  }
+
+  socket.emit("room:join", { roomId: inviteRoomId });
+  ui.showToast(`Joining invited room ${inviteRoomId}...`);
+}
+
+async function shareInviteLink(roomId: string): Promise<void> {
+  const inviteLink = buildInviteLink(roomId);
+  const shareCapableNavigator = navigator as Navigator & {
+    share?: (data: ShareData) => Promise<void>;
+  };
+
+  if (typeof shareCapableNavigator.share === "function") {
+    try {
+      await shareCapableNavigator.share({
+        title: "Remote Support Room Invite",
+        text: `Join room ${roomId}`,
+        url: inviteLink,
+      });
+      ui.showToast("Invite link shared.", "success");
+      return;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+    }
+  }
+
+  try {
+    await navigator.clipboard.writeText(inviteLink);
+    ui.showToast("Invite link copied.", "success");
+  } catch {
+    ui.showToast(`Share this link: ${inviteLink}`);
+  }
+}
+
 function syncCameraStateWithLocalMedia(): void {
   if (state.role !== "client" || !state.room) {
     return;
@@ -653,6 +723,14 @@ ui.bindCreateRoom(() => {
   socket.emit("room:create");
 });
 
+ui.bindCopyInvite(() => {
+  if (state.role !== "host" || !state.room) {
+    return;
+  }
+
+  void shareInviteLink(state.room.id);
+});
+
 ui.bindInstallApp(() => {
   if (!deferredInstallPrompt) {
     if (isIosDevice() && !isStandaloneMode()) {
@@ -660,7 +738,7 @@ ui.bindInstallApp(() => {
       return;
     }
 
-    ui.showToast("Install option अभी available नहीं है.");
+    ui.showToast("Install option is not available yet.");
     return;
   }
 
@@ -868,7 +946,12 @@ socket.on("identify:ok", (payload: unknown) => {
     return;
   }
 
-  void attemptStoredRejoin();
+  if (state.pendingSession) {
+    void attemptStoredRejoin();
+    return;
+  }
+
+  void attemptInviteJoin();
 });
 
 socket.on("session:restored", (payload: unknown) => {
@@ -884,6 +967,8 @@ socket.on("room:created", (payload: unknown) => {
     return;
   }
 
+  inviteRoomId = null;
+  clearInviteRoomIdFromUrl();
   setRole("host");
   applyRoomState(payload.room);
   ui.showToast(`Room ${payload.room.id} created.`, "success");
@@ -894,6 +979,8 @@ socket.on("room:joined", (payload: unknown) => {
     return;
   }
 
+  inviteRoomId = null;
+  clearInviteRoomIdFromUrl();
   setRole("client");
   applyRoomState(payload.room);
   ui.showToast(`Joined room ${payload.room.id}.`, "success");
@@ -904,6 +991,8 @@ socket.on("room:rejoined", (payload: unknown) => {
     return;
   }
 
+  inviteRoomId = null;
+  clearInviteRoomIdFromUrl();
   void handleSessionRecovery(payload.room, payload.role);
   ui.showToast(`Rejoined room ${payload.room.id}.`, "success");
 });
@@ -1068,6 +1157,9 @@ window.addEventListener("appinstalled", () => {
 if (state.pendingSession) {
   ui.setJoinInputValue(state.pendingSession.roomId);
   ui.showToast("Stored session found. Will auto-rejoin when connected.");
+} else if (inviteRoomId) {
+  ui.setJoinInputValue(inviteRoomId);
+  ui.showToast("Invite link detected. Will auto-join when connected.");
 }
 
 clearRoomState(false);

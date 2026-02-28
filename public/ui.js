@@ -13,6 +13,7 @@ export class AppUI {
     controlFlag = requiredElement("controlFlag");
     cameraFlag = requiredElement("cameraFlag");
     createRoomButton = requiredElement("createRoomBtn");
+    copyInviteButton = requiredElement("copyInviteBtn");
     enableCameraButton = requiredElement("enableCameraBtn");
     remoteToggleCameraButton = requiredElement("remoteToggleCameraBtn");
     remoteToggleMicButton = requiredElement("remoteToggleMicBtn");
@@ -49,6 +50,9 @@ export class AppUI {
     }
     bindCreateRoom(handler) {
         this.createRoomButton.addEventListener("click", handler);
+    }
+    bindCopyInvite(handler) {
+        this.copyInviteButton.addEventListener("click", handler);
     }
     bindInstallApp(handler) {
         this.installAppButton.addEventListener("click", handler);
@@ -152,6 +156,9 @@ export class AppUI {
     }
     setCreateRoomEnabled(enabled) {
         this.createRoomButton.disabled = !enabled;
+    }
+    setCopyInviteEnabled(enabled) {
+        this.copyInviteButton.disabled = !enabled;
     }
     setJoinEnabled(enabled) {
         this.joinRoomInput.disabled = !enabled;

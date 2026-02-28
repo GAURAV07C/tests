@@ -29,6 +29,9 @@ export class AppUI {
   private readonly createRoomButton = requiredElement<HTMLButtonElement>(
     "createRoomBtn",
   );
+  private readonly copyInviteButton = requiredElement<HTMLButtonElement>(
+    "copyInviteBtn",
+  );
   private readonly enableCameraButton = requiredElement<HTMLButtonElement>(
     "enableCameraBtn",
   );
@@ -98,6 +101,10 @@ export class AppUI {
 
   public bindCreateRoom(handler: () => void): void {
     this.createRoomButton.addEventListener("click", handler);
+  }
+
+  public bindCopyInvite(handler: () => void): void {
+    this.copyInviteButton.addEventListener("click", handler);
   }
 
   public bindInstallApp(handler: () => void): void {
@@ -226,6 +233,10 @@ export class AppUI {
 
   public setCreateRoomEnabled(enabled: boolean): void {
     this.createRoomButton.disabled = !enabled;
+  }
+
+  public setCopyInviteEnabled(enabled: boolean): void {
+    this.copyInviteButton.disabled = !enabled;
   }
 
   public setJoinEnabled(enabled: boolean): void {
