@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: internal-webrtc-remote-support
+    runtime: node
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 20

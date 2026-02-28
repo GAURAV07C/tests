@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --project tsconfig.json --noEmit",
-    "start": "npm run build && node server/index.js"
+    "start": "node server/index.js"
   },
   "dependencies": {
     "express": "^4.21.2",
