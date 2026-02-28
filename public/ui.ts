@@ -61,6 +61,9 @@ export class AppUI {
   private readonly cameraVideo = requiredElement<HTMLVideoElement>("cameraVideo");
 
   private readonly toast = requiredElement<HTMLDivElement>("toast");
+  private readonly installAppButton = requiredElement<HTMLButtonElement>(
+    "installAppBtn",
+  );
 
   private readonly cameraModal = requiredElement<HTMLDivElement>("cameraModal");
   private readonly allowCameraButton = requiredElement<HTMLButtonElement>(
@@ -95,6 +98,15 @@ export class AppUI {
 
   public bindCreateRoom(handler: () => void): void {
     this.createRoomButton.addEventListener("click", handler);
+  }
+
+  public bindInstallApp(handler: () => void): void {
+    this.installAppButton.addEventListener("click", handler);
+  }
+
+  public setInstallPromptAvailable(available: boolean): void {
+    this.installAppButton.classList.toggle("hidden", !available);
+    this.installAppButton.disabled = !available;
   }
 
   public bindJoinRoom(handler: (roomId: string) => void): void {

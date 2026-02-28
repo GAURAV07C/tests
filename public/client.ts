@@ -42,6 +42,11 @@ interface SocketLike {
 
 declare const io: (options?: SocketOptions) => SocketLike;
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+}
+
 interface AppState {
   userId: string;
   role: Role | null;
@@ -327,6 +332,22 @@ function registerServiceWorker(ui: AppUI): void {
   });
 }
 
+function isStandaloneMode(): boolean {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone)
+  );
+}
+
+function isIosDevice(): boolean {
+  const ua = navigator.userAgent.toLowerCase();
+  return /iphone|ipad|ipod/.test(ua);
+}
+
+function refreshInstallAvailability(ui: AppUI): void {
+  ui.setInstallPromptAvailable(Boolean(deferredInstallPrompt) && !isStandaloneMode());
+}
+
 const ui = new AppUI();
 ui.closeCameraModal();
 
@@ -347,6 +368,8 @@ const state: AppState = {
   cameraPermissionApproved: readBooleanFlag(STORAGE.cameraApproved),
   cameraRequestPending: false,
 };
+
+let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
 
 const rtc = new WebRtcManager({
   roleProvider: () => state.role,
@@ -628,6 +651,36 @@ async function handleCameraRequest(): Promise<void> {
 
 ui.bindCreateRoom(() => {
   socket.emit("room:create");
+});
+
+ui.bindInstallApp(() => {
+  if (!deferredInstallPrompt) {
+    if (isIosDevice() && !isStandaloneMode()) {
+      ui.showToast("iPhone: Share > Add to Home Screen.");
+      return;
+    }
+
+    ui.showToast("Install option अभी available नहीं है.");
+    return;
+  }
+
+  const installPrompt = deferredInstallPrompt;
+  deferredInstallPrompt = null;
+  refreshInstallAvailability(ui);
+
+  void (async () => {
+    try {
+      await installPrompt.prompt();
+      const choice = await installPrompt.userChoice;
+      if (choice.outcome === "accepted") {
+        ui.showToast("App install started.", "success");
+      } else {
+        ui.showToast("Install cancelled.");
+      }
+    } catch (error) {
+      ui.showToast(`Install prompt failed: ${errorMessage(error)}`, "error");
+    }
+  })();
 });
 
 ui.bindJoinRoom((rawRoomId) => {
@@ -999,6 +1052,19 @@ socket.on("room:error", (payload: unknown) => {
   ui.showToast(payload.message, "error");
 });
 
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event as BeforeInstallPromptEvent;
+  refreshInstallAvailability(ui);
+  ui.showToast("Install available. Tap Install App.", "success");
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  refreshInstallAvailability(ui);
+  ui.showToast("App installed.", "success");
+});
+
 if (state.pendingSession) {
   ui.setJoinInputValue(state.pendingSession.roomId);
   ui.showToast("Stored session found. Will auto-rejoin when connected.");
@@ -1006,4 +1072,5 @@ if (state.pendingSession) {
 
 clearRoomState(false);
 updateConnectionUi();
+refreshInstallAvailability(ui);
 registerServiceWorker(ui);

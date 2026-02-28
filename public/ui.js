@@ -25,6 +25,7 @@ export class AppUI {
     screenVideo = requiredElement("screenVideo");
     cameraVideo = requiredElement("cameraVideo");
     toast = requiredElement("toast");
+    installAppButton = requiredElement("installAppBtn");
     cameraModal = requiredElement("cameraModal");
     allowCameraButton = requiredElement("allowCameraBtn");
     denyCameraButton = requiredElement("denyCameraBtn");
@@ -48,6 +49,13 @@ export class AppUI {
     }
     bindCreateRoom(handler) {
         this.createRoomButton.addEventListener("click", handler);
+    }
+    bindInstallApp(handler) {
+        this.installAppButton.addEventListener("click", handler);
+    }
+    setInstallPromptAvailable(available) {
+        this.installAppButton.classList.toggle("hidden", !available);
+        this.installAppButton.disabled = !available;
     }
     bindJoinRoom(handler) {
         const triggerJoin = () => {
