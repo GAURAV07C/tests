@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f2037" />
+    <title>Remote Support</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="header">
+        <h1>Remote Support Console</h1>
+        <p>PWA-ready internal WebRTC support station</p>
+      </header>
+
+      <section class="status-area">
+        <div id="roleBanner" class="banner neutral">Not in a room</div>
+        <div id="reconnectBanner" class="banner warning hidden">Reconnecting...</div>
+        <div class="flag-row">
+          <span id="connectionFlag" class="flag">Disconnected</span>
+          <span id="controlFlag" class="flag">Remote Control Inactive</span>
+          <span id="cameraFlag" class="flag">Camera Inactive</span>
+        </div>
+      </section>
+
+      <section class="panel-grid">
+        <article id="hostPanel" class="panel" aria-label="Host controls">
+          <h2>Host</h2>
+          <button id="createRoomBtn" class="button primary" type="button">
+            Create Room
+          </button>
+          <div class="room-code">
+            Room Code: <strong id="roomCodeValue">-</strong>
+          </div>
+          <button id="enableCameraBtn" class="button" type="button" disabled>
+            Request 
+          </button>
+        </article>
+
+        <article class="panel" aria-label="Client controls">
+          <h2>Client</h2>
+          <label for="joinRoomInput" class="label">Room Code</label>
+          <input
+            id="joinRoomInput"
+            class="input"
+            type="text"
+            maxlength="6"
+            placeholder="123456"
+            inputmode="numeric"
+          />
+          <button id="joinRoomBtn" class="button" type="button">Join Room</button>
+          <button id="startShareBtn" class="button primary" type="button" disabled>
+            Start Screen Share
+          </button>
+        </article>
+      </section>
+
+      <section class="video-grid">
+        <article class="video-panel">
+          <h3>Shared Screen</h3>
+          <video id="screenVideo" autoplay playsinline></video>
+        </article>
+        <article class="video-panel">
+          <h3>Client Camera</h3>
+          <video id="cameraVideo" autoplay playsinline></video>
+        </article>
+      </section>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+
+    <div id="cameraModal"  role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <h2> Request</h2>
+        <p>Host .</p>
+        <div class="modal-actions">
+          <button id="allowCameraBtn" class="button primary" type="button">Allow</button>
+          <button id="denyCameraBtn" class="button danger" type="button">Deny</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>
