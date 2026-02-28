@@ -1,5 +1,5 @@
 import { AppUI } from "./ui.js";
-import { WebRtcManager } from "./webrtc.js";
+import { WebRtcManager, } from "./webrtc.js";
 const STORAGE = {
     userId: "remote_support_user_id",
     roomId: "remote_support_room_id",
@@ -234,6 +234,30 @@ const rtc = new WebRtcManager({
     onRemoteCameraStream: (stream) => {
         ui.setCameraStream(stream);
     },
+    onRemoteMediaCommand: (command) => {
+        if (state.role !== "client" || !state.room) {
+            return;
+        }
+        if (command === "toggle-camera") {
+            const nextEnabled = !rtc.isLocalCameraEnabled();
+            if (!rtc.setLocalCameraEnabled(nextEnabled)) {
+                ui.showToast("Host requested camera toggle but stream is not available.", "error");
+                return;
+            }
+            syncCameraStateWithLocalMedia();
+            refreshActionAvailability();
+            ui.showToast(nextEnabled ? "Host turned camera on." : "Host turned camera off.");
+            return;
+        }
+        const nextEnabled = !rtc.isLocalMicrophoneEnabled();
+        if (!rtc.setLocalMicrophoneEnabled(nextEnabled)) {
+            ui.showToast("Host requested mic toggle but stream is not available.", "error");
+            return;
+        }
+        syncCameraStateWithLocalMedia();
+        refreshActionAvailability();
+        ui.showToast(nextEnabled ? "Host unmuted microphone." : "Host muted microphone.");
+    },
     onLocalStreamKind: (streamId, kind) => {
         if (!state.room) {
             return;
@@ -241,19 +265,33 @@ const rtc = new WebRtcManager({
         socket.emit("media:kind", { roomId: state.room.id, streamId, kind });
     },
 });
+function refreshLocalMediaToggleState() {
+    const hasLocalCameraStream = rtc.hasLocalCameraStream();
+    const canToggle = socket.connected &&
+        state.role === "client" &&
+        hasLocalCameraStream &&
+        !state.cameraRequestPending;
+    ui.setToggleCameraState(canToggle, rtc.isLocalCameraEnabled());
+    ui.setToggleMicState(canToggle, rtc.isLocalMicrophoneEnabled());
+}
 function refreshActionAvailability() {
     if (!socket.connected) {
         ui.setCreateRoomEnabled(false);
         ui.setJoinEnabled(false);
         ui.setStartShareEnabled(false);
         ui.setEnableCameraEnabled(false);
+        ui.setRemoteMediaControlEnabled(false);
+        refreshLocalMediaToggleState();
         return;
     }
     if (state.role === "host") {
         ui.setCreateRoomEnabled(false);
         ui.setJoinEnabled(false);
         ui.setStartShareEnabled(false);
-        ui.setEnableCameraEnabled(Boolean(state.room?.clientSocketId));
+        const hasClient = Boolean(state.room?.clientSocketId);
+        ui.setEnableCameraEnabled(hasClient);
+        ui.setRemoteMediaControlEnabled(hasClient);
+        refreshLocalMediaToggleState();
         return;
     }
     if (state.role === "client") {
@@ -261,12 +299,16 @@ function refreshActionAvailability() {
         ui.setJoinEnabled(false);
         ui.setStartShareEnabled(true);
         ui.setEnableCameraEnabled(false);
+        ui.setRemoteMediaControlEnabled(false);
+        refreshLocalMediaToggleState();
         return;
     }
     ui.setCreateRoomEnabled(true);
     ui.setJoinEnabled(true);
     ui.setStartShareEnabled(false);
     ui.setEnableCameraEnabled(false);
+    ui.setRemoteMediaControlEnabled(false);
+    refreshLocalMediaToggleState();
 }
 function applyRoomState(room) {
     state.room = room;
@@ -325,6 +367,15 @@ async function attemptStoredRejoin() {
         role: state.pendingSession.role,
     });
 }
+function syncCameraStateWithLocalMedia() {
+    if (state.role !== "client" || !state.room) {
+        return;
+    }
+    socket.emit("camera:state", {
+        roomId: state.room.id,
+        active: rtc.isLocalCameraMediaActive(),
+    });
+}
 async function handleCameraRequest() {
     if (state.role !== "client" || !state.room) {
         return;
@@ -343,23 +394,25 @@ async function handleCameraRequest() {
     socket.emit("camera:permission", { roomId, granted: approved });
     if (!approved) {
         socket.emit("camera:state", { roomId, active: false });
-        ui.showToast("Camera request denied.");
+        ui.showToast("Camera + voice request denied.");
         state.cameraRequestPending = false;
+        refreshActionAvailability();
         return;
     }
     try {
         await rtc.startCameraStream();
-        socket.emit("camera:state", { roomId, active: true });
-        ui.showToast("Camera stream started.", "success");
+        syncCameraStateWithLocalMedia();
+        ui.showToast("Camera + voice stream started.", "success");
     }
     catch (error) {
         state.cameraPermissionApproved = false;
         writeBooleanFlag(STORAGE.cameraApproved, false);
         socket.emit("camera:permission", { roomId, granted: false });
         socket.emit("camera:state", { roomId, active: false });
-        ui.showToast(`Camera start failed: ${errorMessage(error)}`, "error");
+        ui.showToast(`Camera + voice start failed: ${errorMessage(error)}`, "error");
     }
     state.cameraRequestPending = false;
+    refreshActionAvailability();
 }
 ui.bindCreateRoom(() => {
     socket.emit("room:create");
@@ -396,6 +449,52 @@ ui.bindEnableCamera(() => {
         return;
     }
     socket.emit("camera:request", { roomId: state.room.id });
+});
+function sendHostRemoteMediaCommand(command) {
+    if (state.role !== "host") {
+        return false;
+    }
+    return rtc.sendControlMessage({ type: command });
+}
+ui.bindRemoteToggleCamera(() => {
+    if (sendHostRemoteMediaCommand("toggle-camera")) {
+        ui.showToast("Remote camera toggle request sent.");
+        return;
+    }
+    ui.showToast("Control channel not ready yet.", "error");
+});
+ui.bindRemoteToggleMic(() => {
+    if (sendHostRemoteMediaCommand("toggle-mic")) {
+        ui.showToast("Remote mic toggle request sent.");
+        return;
+    }
+    ui.showToast("Control channel not ready yet.", "error");
+});
+ui.bindToggleCamera(() => {
+    if (state.role !== "client" || !state.room) {
+        return;
+    }
+    const nextEnabled = !rtc.isLocalCameraEnabled();
+    if (!rtc.setLocalCameraEnabled(nextEnabled)) {
+        ui.showToast("No camera track available.", "error");
+        return;
+    }
+    syncCameraStateWithLocalMedia();
+    refreshActionAvailability();
+    ui.showToast(nextEnabled ? "Camera turned on." : "Camera turned off.");
+});
+ui.bindToggleMic(() => {
+    if (state.role !== "client" || !state.room) {
+        return;
+    }
+    const nextEnabled = !rtc.isLocalMicrophoneEnabled();
+    if (!rtc.setLocalMicrophoneEnabled(nextEnabled)) {
+        ui.showToast("No microphone track available.", "error");
+        return;
+    }
+    syncCameraStateWithLocalMedia();
+    refreshActionAvailability();
+    ui.showToast(nextEnabled ? "Microphone unmuted." : "Microphone muted.");
 });
 const screenVideo = ui.getScreenVideoElement();
 let lastMouseMoveAt = 0;
@@ -557,7 +656,9 @@ socket.on("camera:permission", (payload) => {
     if (state.role !== "host" || !state.room || payload.roomId !== state.room.id) {
         return;
     }
-    ui.showToast(payload.granted ? "Client approved camera." : "Client denied camera.", payload.granted ? "success" : "error");
+    ui.showToast(payload.granted
+        ? "Client approved camera + voice."
+        : "Client denied camera + voice.", payload.granted ? "success" : "error");
 });
 socket.on("peer:disconnected", (payload) => {
     if (!isPeerDisconnectEnvelope(payload)) {

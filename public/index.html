@@ -22,7 +22,7 @@
         <div class="flag-row">
           <span id="connectionFlag" class="flag">Disconnected</span>
           <span id="controlFlag" class="flag">Remote Control Inactive</span>
-          <span id="cameraFlag" class="flag">Camera Inactive</span>
+          <span id="cameraFlag" class="flag">Camera + Voice Inactive</span>
         </div>
       </section>
 
@@ -36,7 +36,13 @@
             Room Code: <strong id="roomCodeValue">-</strong>
           </div>
           <button id="enableCameraBtn" class="button" type="button" disabled>
-            Request 
+            Request Camera + Voice
+          </button>
+          <button id="remoteToggleCameraBtn" class="button" type="button" disabled>
+            Remote Camera On/Off
+          </button>
+          <button id="remoteToggleMicBtn" class="button" type="button" disabled>
+            Remote Mute/Unmute
           </button>
         </article>
 
@@ -55,6 +61,12 @@
           <button id="startShareBtn" class="button primary" type="button" disabled>
             Start Screen Share
           </button>
+          <button id="toggleCameraBtn" class="button" type="button" disabled>
+            Turn Camera Off
+          </button>
+          <button id="toggleMicBtn" class="button" type="button" disabled>
+            Mute Mic
+          </button>
         </article>
       </section>
 
@@ -64,7 +76,7 @@
           <video id="screenVideo" autoplay playsinline></video>
         </article>
         <article class="video-panel">
-          <h3>Client Camera</h3>
+          <h3>Client Camera + Voice</h3>
           <video id="cameraVideo" autoplay playsinline></video>
         </article>
       </section>
@@ -74,8 +86,8 @@
 
     <div id="cameraModal"  role="dialog" aria-modal="true">
       <div class="modal-card">
-        <h2> Request</h2>
-        <p>Host .</p>
+        <h2>Camera + Voice Request</h2>
+        <p>Host wants to enable camera and microphone.</p>
         <div class="modal-actions">
           <button id="allowCameraBtn" class="button primary" type="button">Allow</button>
           <button id="denyCameraBtn" class="button danger" type="button">Deny</button>

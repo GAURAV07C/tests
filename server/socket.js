@@ -380,7 +380,7 @@ export function registerSocketHandlers(io) {
             }
             normalizeRoomState(room);
             if (!canUserControlRoom(room, userId) || room.hostSocketId !== socket.id) {
-                emitError(socket, "Only host can request camera.");
+                emitError(socket, "Only host can request camera and microphone.");
                 return;
             }
             if (!room.clientSocketId) {
@@ -423,7 +423,7 @@ export function registerSocketHandlers(io) {
             }
             normalizeRoomState(room);
             if (!canUserActAsClient(room, userId) || room.clientSocketId !== socket.id) {
-                emitError(socket, "Only active client can report camera permission.");
+                emitError(socket, "Only active client can report camera and microphone permission.");
                 return;
             }
             if (!payload.granted) {
@@ -453,7 +453,7 @@ export function registerSocketHandlers(io) {
             }
             normalizeRoomState(room);
             if (!canUserActAsClient(room, userId) || room.clientSocketId !== socket.id) {
-                emitError(socket, "Only active client can update camera state.");
+                emitError(socket, "Only active client can update camera and microphone state.");
                 return;
             }
             room.cameraActive = payload.active;

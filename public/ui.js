@@ -14,9 +14,13 @@ export class AppUI {
     cameraFlag = requiredElement("cameraFlag");
     createRoomButton = requiredElement("createRoomBtn");
     enableCameraButton = requiredElement("enableCameraBtn");
+    remoteToggleCameraButton = requiredElement("remoteToggleCameraBtn");
+    remoteToggleMicButton = requiredElement("remoteToggleMicBtn");
     joinRoomInput = requiredElement("joinRoomInput");
     joinRoomButton = requiredElement("joinRoomBtn");
     startShareButton = requiredElement("startShareBtn");
+    toggleCameraButton = requiredElement("toggleCameraBtn");
+    toggleMicButton = requiredElement("toggleMicBtn");
     roomCodeValue = requiredElement("roomCodeValue");
     screenVideo = requiredElement("screenVideo");
     cameraVideo = requiredElement("cameraVideo");
@@ -25,6 +29,7 @@ export class AppUI {
     allowCameraButton = requiredElement("allowCameraBtn");
     denyCameraButton = requiredElement("denyCameraBtn");
     toastTimerId;
+    cameraPlaybackHintShown = false;
     cameraModalResolver = null;
     cameraModalPromise = null;
     constructor() {
@@ -65,6 +70,18 @@ export class AppUI {
     }
     bindEnableCamera(handler) {
         this.enableCameraButton.addEventListener("click", handler);
+    }
+    bindRemoteToggleCamera(handler) {
+        this.remoteToggleCameraButton.addEventListener("click", handler);
+    }
+    bindRemoteToggleMic(handler) {
+        this.remoteToggleMicButton.addEventListener("click", handler);
+    }
+    bindToggleCamera(handler) {
+        this.toggleCameraButton.addEventListener("click", handler);
+    }
+    bindToggleMic(handler) {
+        this.toggleMicButton.addEventListener("click", handler);
     }
     async requestCameraApproval() {
         if (this.cameraModalPromise) {
@@ -120,7 +137,9 @@ export class AppUI {
         this.controlFlag.classList.toggle("active", active);
     }
     setCameraActive(active) {
-        this.cameraFlag.textContent = active ? "Camera Active" : "Camera Inactive";
+        this.cameraFlag.textContent = active
+            ? "Camera + Voice Active"
+            : "Camera + Voice Inactive";
         this.cameraFlag.classList.toggle("active", active);
     }
     setCreateRoomEnabled(enabled) {
@@ -136,6 +155,20 @@ export class AppUI {
     setEnableCameraEnabled(enabled) {
         this.enableCameraButton.disabled = !enabled;
     }
+    setRemoteMediaControlEnabled(enabled) {
+        this.remoteToggleCameraButton.disabled = !enabled;
+        this.remoteToggleMicButton.disabled = !enabled;
+    }
+    setToggleCameraState(available, enabled) {
+        this.toggleCameraButton.disabled = !available;
+        this.toggleCameraButton.textContent = enabled
+            ? "Turn Camera Off"
+            : "Turn Camera On";
+    }
+    setToggleMicState(available, enabled) {
+        this.toggleMicButton.disabled = !available;
+        this.toggleMicButton.textContent = enabled ? "Mute Mic" : "Unmute Mic";
+    }
     setScreenStream(stream) {
         this.screenVideo.srcObject = stream;
         if (stream) {
@@ -144,9 +177,19 @@ export class AppUI {
     }
     setCameraStream(stream) {
         this.cameraVideo.srcObject = stream;
-        if (stream) {
-            void this.cameraVideo.play().catch(() => undefined);
+        if (!stream) {
+            this.cameraPlaybackHintShown = false;
+            return;
         }
+        this.cameraVideo.muted = false;
+        this.cameraVideo.volume = 1;
+        void this.cameraVideo.play().catch(() => {
+            if (this.cameraPlaybackHintShown) {
+                return;
+            }
+            this.cameraPlaybackHintShown = true;
+            this.showToast("Tap Client Camera panel once to enable voice playback.");
+        });
     }
     closeCameraModal() {
         if (this.cameraModalResolver) {

@@ -6,10 +6,14 @@ export type WebRtcSignal =
   | { type: "answer"; sdp: string }
   | { type: "ice-candidate"; candidate: RTCIceCandidateInit };
 
+export type RemoteMediaCommand = "toggle-camera" | "toggle-mic";
+
 type OutboundControlMessage =
   | { type: "mousemove"; x: number; y: number }
   | { type: "click"; x: number; y: number; button: number }
-  | { type: "scroll"; deltaX: number; deltaY: number };
+  | { type: "scroll"; deltaX: number; deltaY: number }
+  | { type: "toggle-camera" }
+  | { type: "toggle-mic" };
 
 type InboundControlMessage =
   | {
@@ -30,6 +34,14 @@ type InboundControlMessage =
       deltaX: number;
       deltaY: number;
       senderUserId: string;
+    }
+  | {
+      type: "toggle-camera";
+      senderUserId: string;
+    }
+  | {
+      type: "toggle-mic";
+      senderUserId: string;
     };
 
 export interface WebRtcManagerOptions {
@@ -40,6 +52,7 @@ export interface WebRtcManagerOptions {
   onControlChannelStatus: (active: boolean) => void;
   onRemoteScreenStream: (stream: MediaStream | null) => void;
   onRemoteCameraStream: (stream: MediaStream | null) => void;
+  onRemoteMediaCommand: (command: RemoteMediaCommand) => void;
   onLocalStreamKind: (streamId: string, kind: StreamKind) => void;
 }
 
@@ -84,6 +97,10 @@ function isInboundControlMessage(payload: unknown): payload is InboundControlMes
     return isFiniteNumber(payload.deltaX) && isFiniteNumber(payload.deltaY);
   }
 
+  if (payload.type === "toggle-camera" || payload.type === "toggle-mic") {
+    return true;
+  }
+
   return false;
 }
 
@@ -112,6 +129,66 @@ export class WebRtcManager {
 
   public hasLocalCameraStream(): boolean {
     return Boolean(this.localCameraStream);
+  }
+
+  public isLocalCameraEnabled(): boolean {
+    if (!this.localCameraStream) {
+      return false;
+    }
+
+    const tracks = this.localCameraStream.getVideoTracks();
+    return tracks.length > 0 && tracks.some((track) => track.enabled);
+  }
+
+  public isLocalMicrophoneEnabled(): boolean {
+    if (!this.localCameraStream) {
+      return false;
+    }
+
+    const tracks = this.localCameraStream.getAudioTracks();
+    return tracks.length > 0 && tracks.some((track) => track.enabled);
+  }
+
+  public setLocalCameraEnabled(enabled: boolean): boolean {
+    if (!this.localCameraStream) {
+      return false;
+    }
+
+    const tracks = this.localCameraStream.getVideoTracks();
+    if (tracks.length === 0) {
+      return false;
+    }
+
+    for (const track of tracks) {
+      track.enabled = enabled;
+    }
+
+    return true;
+  }
+
+  public setLocalMicrophoneEnabled(enabled: boolean): boolean {
+    if (!this.localCameraStream) {
+      return false;
+    }
+
+    const tracks = this.localCameraStream.getAudioTracks();
+    if (tracks.length === 0) {
+      return false;
+    }
+
+    for (const track of tracks) {
+      track.enabled = enabled;
+    }
+
+    return true;
+  }
+
+  public isLocalCameraMediaActive(): boolean {
+    if (!this.localCameraStream) {
+      return false;
+    }
+
+    return this.localCameraStream.getTracks().some((track) => track.enabled);
   }
 
   public setRemoteStreamKind(streamId: string, kind: StreamKind): void {
@@ -163,26 +240,17 @@ export class WebRtcManager {
 
   public async startCameraStream(): Promise<MediaStream> {
     if (this.options.roleProvider() !== "client") {
-      throw new Error("Only client can start camera.");
+      throw new Error("Only client can start camera and microphone.");
     }
 
     if (!window.isSecureContext) {
-      throw new Error("Camera requires HTTPS or localhost.");
+      throw new Error("Camera and microphone require HTTPS or localhost.");
     }
 
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-    } catch {
-      // Fallback to video-only when audio permission/device fails.
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: false,
-      });
-    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
 
     const connection = this.ensurePeerConnection();
     this.replaceOutgoingCameraStream(connection, stream);
@@ -258,44 +326,57 @@ export class WebRtcManager {
     }
   }
 
-  public sendControlMessage(message: OutboundControlMessage): void {
+  public sendControlMessage(message: OutboundControlMessage): boolean {
     if (this.options.roleProvider() !== "host") {
-      return;
+      return false;
     }
 
     if (!this.controlChannel || this.controlChannel.readyState !== "open") {
-      return;
+      return false;
     }
 
     const senderUserId = this.options.localUserIdProvider();
     if (!senderUserId) {
-      return;
+      return false;
     }
 
-    const payload: InboundControlMessage =
-      message.type === "scroll"
-        ? {
-            type: "scroll",
-            deltaX: message.deltaX,
-            deltaY: message.deltaY,
-            senderUserId,
-          }
-        : message.type === "click"
-          ? {
-              type: "click",
-              x: clamp(message.x, 0, 1),
-              y: clamp(message.y, 0, 1),
-              button: message.button,
-              senderUserId,
-            }
-          : {
-              type: "mousemove",
-              x: clamp(message.x, 0, 1),
-              y: clamp(message.y, 0, 1),
-              senderUserId,
-            };
+    let payload: InboundControlMessage;
+    if (message.type === "scroll") {
+      payload = {
+        type: "scroll",
+        deltaX: message.deltaX,
+        deltaY: message.deltaY,
+        senderUserId,
+      };
+    } else if (message.type === "click") {
+      payload = {
+        type: "click",
+        x: clamp(message.x, 0, 1),
+        y: clamp(message.y, 0, 1),
+        button: message.button,
+        senderUserId,
+      };
+    } else if (message.type === "toggle-camera") {
+      payload = {
+        type: "toggle-camera",
+        senderUserId,
+      };
+    } else if (message.type === "toggle-mic") {
+      payload = {
+        type: "toggle-mic",
+        senderUserId,
+      };
+    } else {
+      payload = {
+        type: "mousemove",
+        x: clamp(message.x, 0, 1),
+        y: clamp(message.y, 0, 1),
+        senderUserId,
+      };
+    }
 
     this.controlChannel.send(JSON.stringify(payload));
+    return true;
   }
 
   public clearRemoteMedia(): void {
@@ -435,6 +516,11 @@ export class WebRtcManager {
 
     if (parsed.type === "scroll") {
       window.scrollBy({ left: parsed.deltaX, top: parsed.deltaY, behavior: "auto" });
+      return;
+    }
+
+    if (parsed.type === "toggle-camera" || parsed.type === "toggle-mic") {
+      this.options.onRemoteMediaCommand(parsed.type);
       return;
     }
 

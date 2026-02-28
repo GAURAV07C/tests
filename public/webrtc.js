@@ -28,6 +28,9 @@ function isInboundControlMessage(payload) {
     if (payload.type === "scroll") {
         return isFiniteNumber(payload.deltaX) && isFiniteNumber(payload.deltaY);
     }
+    if (payload.type === "toggle-camera" || payload.type === "toggle-mic") {
+        return true;
+    }
     return false;
 }
 export class WebRtcManager {
@@ -51,6 +54,52 @@ export class WebRtcManager {
     }
     hasLocalCameraStream() {
         return Boolean(this.localCameraStream);
+    }
+    isLocalCameraEnabled() {
+        if (!this.localCameraStream) {
+            return false;
+        }
+        const tracks = this.localCameraStream.getVideoTracks();
+        return tracks.length > 0 && tracks.some((track) => track.enabled);
+    }
+    isLocalMicrophoneEnabled() {
+        if (!this.localCameraStream) {
+            return false;
+        }
+        const tracks = this.localCameraStream.getAudioTracks();
+        return tracks.length > 0 && tracks.some((track) => track.enabled);
+    }
+    setLocalCameraEnabled(enabled) {
+        if (!this.localCameraStream) {
+            return false;
+        }
+        const tracks = this.localCameraStream.getVideoTracks();
+        if (tracks.length === 0) {
+            return false;
+        }
+        for (const track of tracks) {
+            track.enabled = enabled;
+        }
+        return true;
+    }
+    setLocalMicrophoneEnabled(enabled) {
+        if (!this.localCameraStream) {
+            return false;
+        }
+        const tracks = this.localCameraStream.getAudioTracks();
+        if (tracks.length === 0) {
+            return false;
+        }
+        for (const track of tracks) {
+            track.enabled = enabled;
+        }
+        return true;
+    }
+    isLocalCameraMediaActive() {
+        if (!this.localCameraStream) {
+            return false;
+        }
+        return this.localCameraStream.getTracks().some((track) => track.enabled);
     }
     setRemoteStreamKind(streamId, kind) {
         this.streamKinds.set(streamId, kind);
@@ -91,25 +140,15 @@ export class WebRtcManager {
     }
     async startCameraStream() {
         if (this.options.roleProvider() !== "client") {
-            throw new Error("Only client can start camera.");
+            throw new Error("Only client can start camera and microphone.");
         }
         if (!window.isSecureContext) {
-            throw new Error("Camera requires HTTPS or localhost.");
+            throw new Error("Camera and microphone require HTTPS or localhost.");
         }
-        let stream;
-        try {
-            stream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: true,
-            });
-        }
-        catch {
-            // Fallback to video-only when audio permission/device fails.
-            stream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: false,
-            });
-        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+        });
         const connection = this.ensurePeerConnection();
         this.replaceOutgoingCameraStream(connection, stream);
         this.options.onLocalStreamKind(stream.id, "camera");
@@ -171,37 +210,55 @@ export class WebRtcManager {
     }
     sendControlMessage(message) {
         if (this.options.roleProvider() !== "host") {
-            return;
+            return false;
         }
         if (!this.controlChannel || this.controlChannel.readyState !== "open") {
-            return;
+            return false;
         }
         const senderUserId = this.options.localUserIdProvider();
         if (!senderUserId) {
-            return;
+            return false;
         }
-        const payload = message.type === "scroll"
-            ? {
+        let payload;
+        if (message.type === "scroll") {
+            payload = {
                 type: "scroll",
                 deltaX: message.deltaX,
                 deltaY: message.deltaY,
                 senderUserId,
-            }
-            : message.type === "click"
-                ? {
-                    type: "click",
-                    x: clamp(message.x, 0, 1),
-                    y: clamp(message.y, 0, 1),
-                    button: message.button,
-                    senderUserId,
-                }
-                : {
-                    type: "mousemove",
-                    x: clamp(message.x, 0, 1),
-                    y: clamp(message.y, 0, 1),
-                    senderUserId,
-                };
+            };
+        }
+        else if (message.type === "click") {
+            payload = {
+                type: "click",
+                x: clamp(message.x, 0, 1),
+                y: clamp(message.y, 0, 1),
+                button: message.button,
+                senderUserId,
+            };
+        }
+        else if (message.type === "toggle-camera") {
+            payload = {
+                type: "toggle-camera",
+                senderUserId,
+            };
+        }
+        else if (message.type === "toggle-mic") {
+            payload = {
+                type: "toggle-mic",
+                senderUserId,
+            };
+        }
+        else {
+            payload = {
+                type: "mousemove",
+                x: clamp(message.x, 0, 1),
+                y: clamp(message.y, 0, 1),
+                senderUserId,
+            };
+        }
         this.controlChannel.send(JSON.stringify(payload));
+        return true;
     }
     clearRemoteMedia() {
         this.streamKinds.clear();
@@ -310,6 +367,10 @@ export class WebRtcManager {
         }
         if (parsed.type === "scroll") {
             window.scrollBy({ left: parsed.deltaX, top: parsed.deltaY, behavior: "auto" });
+            return;
+        }
+        if (parsed.type === "toggle-camera" || parsed.type === "toggle-mic") {
+            this.options.onRemoteMediaCommand(parsed.type);
             return;
         }
         const point = {
