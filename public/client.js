@@ -239,6 +239,38 @@ const rtc = new WebRtcManager({
             return;
         }
         if (command === "toggle-camera") {
+            if (!rtc.hasLocalCameraStream()) {
+                if (state.cameraRequestPending) {
+                    return;
+                }
+                if (!state.cameraPermissionApproved) {
+                    ui.showToast("Host requested camera. Please allow Camera + Voice once from request button.", "error");
+                    return;
+                }
+                state.cameraRequestPending = true;
+                refreshActionAvailability();
+                const roomId = state.room.id;
+                void (async () => {
+                    try {
+                        await rtc.startCameraStream();
+                        socket.emit("camera:permission", { roomId, granted: true });
+                        syncCameraStateWithLocalMedia();
+                        ui.showToast("Host turned camera on.", "success");
+                    }
+                    catch (error) {
+                        state.cameraPermissionApproved = false;
+                        writeBooleanFlag(STORAGE.cameraApproved, false);
+                        socket.emit("camera:permission", { roomId, granted: false });
+                        socket.emit("camera:state", { roomId, active: false });
+                        ui.showToast(`Host camera command failed: ${errorMessage(error)}`, "error");
+                    }
+                    finally {
+                        state.cameraRequestPending = false;
+                        refreshActionAvailability();
+                    }
+                })();
+                return;
+            }
             const nextEnabled = !rtc.isLocalCameraEnabled();
             if (!rtc.setLocalCameraEnabled(nextEnabled)) {
                 ui.showToast("Host requested camera toggle but stream is not available.", "error");
